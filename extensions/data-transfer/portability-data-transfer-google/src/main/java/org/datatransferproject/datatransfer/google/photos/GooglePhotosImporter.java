@@ -16,7 +16,6 @@
 package org.datatransferproject.datatransfer.google.photos;
 
 import static java.lang.String.format;
-import static org.datatransferproject.datatransfer.google.photos.GooglePhotosInterface.ERROR_HASH_MISMATCH;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.json.JsonFactory;
@@ -144,7 +143,7 @@ public class GooglePhotosImporter
 
   @VisibleForTesting
   String importSingleAlbum(UUID jobId, TokensAndUrlAuthData authData, PhotoAlbum inputAlbum)
-      throws IOException, InvalidTokenException, PermissionDeniedException, UploadErrorException {
+      throws IOException, InvalidTokenException, PermissionDeniedException {
     // Set up album
     GoogleAlbum googleAlbum = new GoogleAlbum();
     String title = Strings.nullToEmpty(inputAlbum.getName());
@@ -231,10 +230,8 @@ public class GooglePhotosImporter
           size = inputStreamBytesPair.getRight();
           uploadTokenToLength.put(uploadToken, size);
         } catch (UploadErrorException e) {
-          if (e.getMessage().contains(ERROR_HASH_MISMATCH)) {
             monitor.severe(
-                () -> format("%s: SHA-1 (%s) mismatch during upload", jobId, photo.getSha1()));
-          }
+                () -> format("%s: error during upload: %s", jobId,e.getMessage()));
 
           Long finalSize = size;
           executor.importAndSwallowIOExceptions(photo, p -> ItemImportResult.error(e, finalSize));

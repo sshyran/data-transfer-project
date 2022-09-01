@@ -128,7 +128,7 @@ public class GooglePhotosInterface {
   }
 
   MediaItemSearchResponse listMediaItems(Optional<String> albumId, Optional<String> pageToken)
-      throws IOException, InvalidTokenException, PermissionDeniedException, UploadErrorException {
+      throws IOException, InvalidTokenException, PermissionDeniedException {
     Map<String, Object> params = new LinkedHashMap<>();
     params.put(PAGE_SIZE_KEY, String.valueOf(MEDIA_PAGE_SIZE));
     if (albumId.isPresent()) {
@@ -140,22 +140,22 @@ public class GooglePhotosInterface {
       params.put(TOKEN_KEY, pageToken.get());
     }
     HttpContent content = new JsonHttpContent(this.jsonFactory, params);
-    return makePostRequest(BASE_URL + "mediaItems:search", Optional.empty(), Optional.empty(),
+    return makePostRequest(BASE_URL + "mediaItems:search",
         content, MediaItemSearchResponse.class);
   }
 
   GoogleAlbum createAlbum(GoogleAlbum googleAlbum)
-      throws IOException, InvalidTokenException, PermissionDeniedException, UploadErrorException {
+      throws IOException, InvalidTokenException, PermissionDeniedException {
     Map<String, Object> albumMap = createJsonMap(googleAlbum);
     Map<String, Object> contentMap = ImmutableMap.of("album", albumMap);
     HttpContent content = new JsonHttpContent(jsonFactory, contentMap);
 
-    return makePostRequest(BASE_URL + "albums", Optional.empty(), Optional.empty(), content,
+    return makePostRequest(BASE_URL + "albums",  content,
         GoogleAlbum.class);
   }
 
   String uploadPhotoContent(InputStream inputStream, @Nullable String sha1)
-      throws IOException, InvalidTokenException, PermissionDeniedException, UploadErrorException {
+          throws IOException, InvalidTokenException, PermissionDeniedException, UploadErrorException {
     // TODO: add filename
     InputStreamContent content = new InputStreamContent(null, inputStream);
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -182,11 +182,11 @@ public class GooglePhotosInterface {
   }
 
   BatchMediaItemResponse createPhotos(NewMediaItemUpload newMediaItemUpload)
-      throws IOException, InvalidTokenException, PermissionDeniedException, UploadErrorException {
+      throws IOException, InvalidTokenException, PermissionDeniedException {
     HashMap<String, Object> map = createJsonMap(newMediaItemUpload);
     HttpContent httpContent = new JsonHttpContent(this.jsonFactory, map);
 
-    return makePostRequest(BASE_URL + "mediaItems:batchCreate", Optional.empty(), Optional.empty(),
+    return makePostRequest(BASE_URL + "mediaItems:batchCreate",
         httpContent, BatchMediaItemResponse.class);
   }
 
@@ -246,6 +246,41 @@ public class GooglePhotosInterface {
     Preconditions.checkState(response.getStatusCode() == 200);
     String result =
         CharStreams.toString(new InputStreamReader(response.getContent(), Charsets.UTF_8));
+    if (clazz.isAssignableFrom(String.class)) {
+      return (T) result;
+    } else {
+      return objectMapper.readValue(result, clazz);
+    }
+  }
+
+  <T> T makePostRequest(String url,
+                      HttpContent httpContent, Class<T> clazz)
+          throws IOException, InvalidTokenException, PermissionDeniedException {
+    // Wait for write permit before making request
+    writeRateLimiter.acquire();
+
+    HttpRequestFactory requestFactory = httpTransport.createRequestFactory();
+    HttpRequest postRequest =
+            requestFactory.buildPostRequest(
+                    new GenericUrl(url ), httpContent);
+
+    postRequest.setReadTimeout(2 * 60000); // 2 minutes read timeout
+    HttpResponse response;
+
+    try {
+      response = postRequest.execute();
+    } catch (HttpResponseException e) {
+      response =
+              handleHttpResponseException(
+                      () ->
+                              requestFactory.buildPostRequest(
+                                      new GenericUrl(url), httpContent),
+                      e);
+    }
+
+    Preconditions.checkState(response.getStatusCode() == 200);
+    String result =
+            CharStreams.toString(new InputStreamReader(response.getContent(), Charsets.UTF_8));
     if (clazz.isAssignableFrom(String.class)) {
       return (T) result;
     } else {
